@@ -1,0 +1,755 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE USER & PROFILE
+// ============================================
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model User {
+  id                    String     @id @default(cuid())
+  firstName             String
+  lastName              String
+  email                 String     @unique
+  passwordHash          String
+  role                  UserRole   @default(USER)
+  status                UserStatus @default(ACTIVE)
+  emailVerified         Boolean    @default(false)
+  emailVerificationToken String?
+  resetPasswordToken    String?
+  resetPasswordExpires  DateTime?
+  freeResumeLimit       Int        @default(1)
+  freeResumeUsed        Boolean    @default(false)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  lastLoginAt           DateTime?
+
+  // Relations
+  profile               Profile?
+  resumes               Resume[]
+  subscriptions         Subscription[]
+  payments              Payment[]
+  invoices              Invoice[]
+  aiUsage               AIUsage[]
+  atsChecks             ATSCheck[]
+  atsReports            ATSReport[]
+  coverLetters          CoverLetter[]
+  interviewSessions     InterviewSession[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+
+  @@index([email])
+  @@index([status])
+}
+
+model Profile {
+  id                    String     @id @default(cuid())
+  userId                String     @unique
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Personal
+  phone                 String?
+  country               String?
+  city                  String?
+  profilePhotoUrl       String?
+  
+  // Career
+  jobTitle              String?
+  industry              String?
+  yearsOfExperience     Int?
+  linkedinUrl           String?
+  portfolioUrl          String?
+  personalWebsiteUrl    String?
+  
+  // Preferences
+  preferredCVStyle      String?
+  preferredLanguage     String     @default("en")
+  careerField           String?
+  notificationsEnabled  Boolean    @default(true)
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([userId])
+}
+
+// ============================================
+// RESUME / CV
+// ============================================
+
+enum ResumeStatus {
+  DRAFT
+  COMPLETED
+  ARCHIVED
+}
+
+model Resume {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  templateId            String
+  template              ResumeTemplate @relation(fields: [templateId], references: [id])
+  
+  title                 String     @default("My Resume")
+  status                ResumeStatus @default(DRAFT)
+  
+  // Structured data
+  personalSummary       String?
+  
+  experiences           ResumeExperience[]
+  education             ResumeEducation[]
+  skills                ResumeSkill[]
+  languages             ResumeLanguage[]
+  certifications        ResumeCertification[]
+  projects              ResumeProject[]
+  awards                ResumeAward[]
+  customSections        ResumeCustomSection[]
+  
+  // Relations
+  atsChecks             ATSCheck[]
+  coverLetters          CoverLetter[]
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  deletedAt             DateTime?  // Soft delete
+
+  @@index([userId])
+  @@index([templateId])
+  @@index([status])
+}
+
+model ResumeTemplate {
+  id                    String     @id @default(cuid())
+  name                  String     @unique
+  displayName           String
+  description           String
+  category              String     // ATS Friendly, Professional, Modern, etc.
+  thumbnailUrl          String?
+  htmlTemplate          String     @db.Text
+  cssTemplate           String     @db.Text
+  isActive              Boolean    @default(true)
+  displayOrder          Int        @default(0)
+  
+  resumes               Resume[]
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+}
+
+model ResumeExperience {
+  id                    String     @id @default(cuid())
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  jobTitle              String
+  company               String
+  location              String?
+  startDate             DateTime
+  endDate               DateTime?
+  currentlyWorking      Boolean    @default(false)
+  description           String     @db.Text
+  achievements          String[]   @default([])
+  
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([resumeId])
+}
+
+model ResumeEducation {
+  id                    String     @id @default(cuid())
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  school                String
+  degree                String
+  fieldOfStudy          String
+  startDate             DateTime
+  endDate               DateTime?
+  gpa                   String?
+  description           String?
+  
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([resumeId])
+}
+
+model ResumeSkill {
+  id                    String     @id @default(cuid())
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  name                  String
+  proficiency           String?    // Beginner, Intermediate, Expert, etc.
+  endorsements          Int        @default(0)
+  
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+
+  @@index([resumeId])
+}
+
+model ResumeLanguage {
+  id                    String     @id @default(cuid())
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  language              String
+  proficiency           String     // Native, Fluent, Intermediate, Basic
+  
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+
+  @@index([resumeId])
+}
+
+model ResumeCertification {
+  id                    String     @id @default(cuid())
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  name                  String
+  issuer                String
+  issueDate             DateTime
+  expiryDate            DateTime?
+  credentialUrl         String?
+  
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+
+  @@index([resumeId])
+}
+
+model ResumeProject {
+  id                    String     @id @default(cuid())
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  name                  String
+  description           String     @db.Text
+  technologies          String[]   @default([])
+  url                   String?
+  startDate             DateTime?
+  endDate               DateTime?
+  
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+
+  @@index([resumeId])
+}
+
+model ResumeAward {
+  id                    String     @id @default(cuid())
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  title                 String
+  issuer                String
+  dateReceived          DateTime
+  description           String?
+  
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+
+  @@index([resumeId])
+}
+
+model ResumeCustomSection {
+  id                    String     @id @default(cuid())
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  title                 String
+  content               String     @db.Text
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+
+  @@index([resumeId])
+}
+
+// ============================================
+// SUBSCRIPTIONS & PAYMENTS
+// ============================================
+
+enum PaymentProvider {
+  STRIPE
+  PAYPAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+  TRIALING
+  INCOMPLETE
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+model SubscriptionPlan {
+  id                    String     @id @default(cuid())
+  name                  String     @unique
+  description           String
+  monthlyPrice          Float
+  annualPrice           Float
+  currency              String     @default("USD")
+  
+  // Feature limits
+  resumeLimit           Int        @default(1)
+  aiUsageLimit          Int?       // -1 for unlimited
+  coverLetterLimit      Int?
+  atsChecksLimit        Int?
+  interviewSessionsLimit Int?
+  
+  // Features
+  features              String[]   @default([])
+  availableTemplates    String[]   @default([])
+  
+  // Admin control
+  isActive              Boolean    @default(true)
+  isRecommended         Boolean    @default(false)
+  displayOrder          Int        @default(0)
+  
+  subscriptions         Subscription[]
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([isActive])
+}
+
+model Subscription {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  planId                String
+  plan                  SubscriptionPlan @relation(fields: [planId], references: [id])
+  
+  provider              PaymentProvider
+  providerCustomerId    String?
+  providerSubscriptionId String?
+  providerPlanId        String?
+  
+  status                SubscriptionStatus @default(INCOMPLETE)
+  billingInterval       BillingInterval
+  
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  cancelAtPeriodEnd     Boolean    @default(false)
+  
+  // Trial
+  trialStartDate        DateTime?
+  trialEndDate          DateTime?
+  
+  payments              Payment[]
+  invoices              Invoice[]
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@unique([userId, provider])
+  @@index([userId])
+  @@index([status])
+  @@index([provider])
+}
+
+model Payment {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  subscriptionId        String?
+  subscription          Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  
+  provider              PaymentProvider
+  providerPaymentId     String
+  
+  amount                Float
+  currency              String     @default("USD")
+  status                String     // succeeded, failed, pending
+  
+  invoice               Invoice?
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([provider])
+  @@index([status])
+}
+
+model Invoice {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  subscriptionId        String?
+  subscription          Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  
+  paymentId             String?
+  payment               Payment?   @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  
+  invoiceNumber         String     @unique
+  amount                Float
+  currency              String     @default("USD")
+  status                String     // draft, sent, paid, voided
+  
+  pdfUrl                String?
+  
+  issuedAt              DateTime   @default(now())
+  dueAt                 DateTime?
+  paidAt                DateTime?
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ============================================
+// AI FEATURES
+// ============================================
+
+enum AIFeature {
+  CV_WRITER
+  SUMMARY_GENERATOR
+  EXPERIENCE_REWRITER
+  COVER_LETTER
+  ATS_ANALYSIS
+  INTERVIEW_GENERATOR
+}
+
+model AIUsage {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  feature               AIFeature
+  provider              String     // openai, etc.
+  model                 String
+  
+  inputTokens           Int
+  outputTokens          Int
+  totalTokens           Int
+  
+  status                String     // success, failed
+  
+  createdAt             DateTime   @default(now())
+
+  @@index([userId])
+  @@index([feature])
+  @@index([createdAt])
+}
+
+// ============================================
+// ATS CHECKER
+// ============================================
+
+model ATSCheck {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  resumeId              String
+  resume                Resume     @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  
+  jobDescription        String     @db.Text
+  score                 Float      @default(0)
+  
+  report                ATSReport?
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([resumeId])
+}
+
+model ATSReport {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  atsCheckId            String     @unique
+  atsCheck              ATSCheck   @relation(fields: [atsCheckId], references: [id], onDelete: Cascade)
+  
+  // Scoring
+  keywordScore          Float      @default(0)
+  formattingScore       Float      @default(0)
+  experienceScore       Float      @default(0)
+  skillsScore           Float      @default(0)
+  educationScore        Float      @default(0)
+  
+  // Analysis
+  matchedKeywords       String[]   @default([])
+  missingKeywords       String[]   @default([])
+  recommendations       String[]   @default([])
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([atsCheckId])
+}
+
+// ============================================
+// COVER LETTERS
+// ============================================
+
+model CoverLetter {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  resumeId              String?
+  resume                Resume?    @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  
+  jobTitle              String
+  companyName           String
+  jobDescription        String?    @db.Text
+  hiringManagerName     String?
+  tone                  String     // professional, confident, friendly, executive, concise
+  
+  content               String     @db.Text
+  templateId            String?
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([resumeId])
+}
+
+// ============================================
+// INTERVIEW PREPARATION
+// ============================================
+
+enum InterviewSessionStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+}
+
+enum InterviewQuestionCategory {
+  GENERAL
+  BEHAVIORAL
+  TECHNICAL
+  SITUATIONAL
+  LEADERSHIP
+  COMPANY_SPECIFIC
+}
+
+model InterviewSession {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  jobTitle              String
+  company               String?
+  jobDescription        String?    @db.Text
+  experienceLevel       String?
+  
+  status                InterviewSessionStatus @default(ACTIVE)
+  averageScore          Float?
+  
+  questions             InterviewQuestion[]
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model InterviewQuestion {
+  id                    String     @id @default(cuid())
+  sessionId             String
+  session               InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  question              String     @db.Text
+  category              InterviewQuestionCategory
+  difficulty            String?    // easy, medium, hard
+  
+  answer                InterviewAnswer?
+  
+  order                 Int        @default(0)
+  createdAt             DateTime   @default(now())
+
+  @@index([sessionId])
+}
+
+model InterviewAnswer {
+  id                    String     @id @default(cuid())
+  questionId            String     @unique
+  question              InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  answerText            String     @db.Text
+  score                 Float?
+  feedback              String     @db.Text?
+  
+  // Analysis
+  relevanceScore        Float?
+  structureScore        Float?
+  confidenceScore       Float?
+  clarityScore          Float?
+  concisenessScore      Float?
+  
+  strengths             String[]   @default([])
+  weaknesses            String[]   @default([])
+  suggestions           String[]   @default([])
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+}
+
+// ============================================
+// CONTENT & CMS
+// ============================================
+
+model Page {
+  id                    String     @id @default(cuid())
+  slug                  String     @unique
+  title                 String
+  description           String?
+  content               String     @db.Text
+  seoTitle              String?
+  seoDescription        String?
+  seoKeywords           String?
+  
+  isPublished           Boolean    @default(false)
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([slug])
+  @@index([isPublished])
+}
+
+// ============================================
+// SETTINGS & CONFIGURATION
+// ============================================
+
+model SiteSetting {
+  id                    String     @id @default(cuid())
+  key                   String     @unique
+  value                 String     @db.Text
+  description           String?
+  
+  updatedAt             DateTime   @updatedAt
+}
+
+model FeatureFlag {
+  id                    String     @id @default(cuid())
+  name                  String     @unique
+  description           String?
+  isEnabled             Boolean    @default(true)
+  
+  updatedAt             DateTime   @updatedAt
+
+  @@index([isEnabled])
+}
+
+model Coupon {
+  id                    String     @id @default(cuid())
+  code                  String     @unique
+  description           String?
+  discountType          String     // percentage, fixed
+  discountValue         Float
+  maxUses              Int?
+  usedCount            Int        @default(0)
+  isActive              Boolean    @default(true)
+  expiresAt             DateTime?
+  
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+}
+
+// ============================================
+// NOTIFICATIONS & AUDIT
+// ============================================
+
+model Notification {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type                  String     // email_verified, subscription_active, etc.
+  title                 String
+  message               String
+  
+  isRead                Boolean    @default(false)
+  readAt                DateTime?
+  
+  actionUrl             String?
+  
+  createdAt             DateTime   @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PAYMENT
+  SUBSCRIPTION_CHANGE
+  ADMIN_ACTION
+}
+
+model AuditLog {
+  id                    String     @id @default(cuid())
+  userId                String
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  action                AuditAction
+  resource              String     // Resume, Subscription, etc.
+  resourceId            String?
+  
+  details               String?    @db.Text
+  ipAddress             String?
+  userAgent             String?
+  
+  createdAt             DateTime   @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
